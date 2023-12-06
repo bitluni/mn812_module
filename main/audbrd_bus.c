@@ -17,9 +17,9 @@
 #include "driver/ledc.h"
 
 
-static const int d_pins[16]={14, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5};
-static const int a_pins[8]={21, 47, 48, 45, 35, 36, 37, 38};
-static const int ctl_pins[6]={39, 40, 41}; //nCS1, RnW, nCS2
+static const int d_pins[16]={1, 2, 43, 44, 45, 47, 14, 12, 11, 10, 9, 46, 3, 8, 17, 15};
+static const int a_pins[8]={42, 41, 40, 39, 38, 48, 21, 13};
+static const int ctl_pins[6]={16, 18, 16}; //nCS1, RnW, nCS2
 static const int clk_pin=0;
 
 static void pins_setup(const int *pins, int ct) {
