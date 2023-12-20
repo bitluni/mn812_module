@@ -30,7 +30,7 @@ static rotary_t rotary[16];
 
 static SemaphoreHandle_t mutex;
 
-void audbrd_chardisp_set(int pos, char *c) {
+void audbrd_chardisp_set(int pos, const char *c) {
 	xSemaphoreTake(mutex, portMAX_DELAY);
 	for (int i=0; i<4; i++) {
 		if (*c) {

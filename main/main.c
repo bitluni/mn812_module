@@ -8,18 +8,24 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <stdio.h>
+#include <errno.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <inttypes.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "audbrd.h"
 #include "driver/sdm.h"
 #include "driver/gptimer.h"
-#include <math.h>
-#include "sounds.h"
+#include "esp_partition.h"
+#include "esp_check.h"
+#include "tinyusb.h"
+#include "tusb_msc_storage.h"
+#include "massstorage.h"
 
-int sinTab[1024];
+void panelTrackerInit(int samplingRate);
+void panelTrackerNextSample(int *left, int *right);
+
 volatile int16_t audio[2] = {0};
 int pattern[16][2] = {{0, 0}}; //vol, freq
 const int samplingRate = 24000;
@@ -31,57 +37,20 @@ int button[64] = {0};
 int knob[16] = {0};
 int patternIndex = 0;
 
-int noteFrequencies[128] = {0};
-const char *noteNameBase[] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
-char noteName[128][5] = {{"    "}};
-char noteFreqStr[128][5] = {{"    "}};
-
-const int NOTE_MODE = 4;
-
-void ev_cb(int type, int which, int val) {
-	//printf("Ev %d which %d val %d\n", type, which, val);
-	if (type==AUDBRD_EVT_BTN && val) 
-	{
-		button[which] = (button[which] + 1) & 3;
-		if(which == NOTE_MODE)
-		{
-			button[NOTE_MODE] &= 1;			
-			audbrd_btn_led_set(which, button[which]);
-			for(int i = 0; i < 16; i++)			
-				if(button[NOTE_MODE])
-					audbrd_chardisp_set(i, noteFreqStr[pattern[i][0]]);
-				else
-					audbrd_chardisp_set(i, noteName[pattern[i][0]]);
-		}
-	}
-	if (type==AUDBRD_EVT_ROTARY) 
-	{
-		if(val) val += 11;
-		knob[which] = val;
-		pattern[which][0] = val;
-		if(button[NOTE_MODE])
-			audbrd_chardisp_set(which, noteFreqStr[val]);
-		else
-			audbrd_chardisp_set(which, noteName[val]);
-		//char buf[32];
-		//sprintf(buf, "%d%%", val);
-		//audbrd_chardisp_set(which, buf);
-	}
-}
-
 gptimer_handle_t sampleTimer = 0;
 
 int8_t nextSample()
 {
 //	return (int)(sin(((M_PI * 2 / samplingRate) * sampleIndex * pattern[patternIndex][0])) * (127 * 100 / 100));
-	if(pattern[patternIndex][0] > 111 - 4)
+	/*if(pattern[patternIndex][0] > 111 - 4)
 	{
 		int i = 111 - 4;
 		return soundsSamples[soundsOffsets[i] + patternSampleIndex];
 	}
 	else
 		return sinTab[((sampleIndex * noteFrequencies[pattern[patternIndex][0]]) / samplingRate) & 1023] >> 8;
-	
+	*/
+	return 128;
 //	return sinTab[(1024 * (int)(sampleIndex * pattern[patternIndex][0]) / samplingRate) & 1023] >> 8;
 }
 
@@ -89,25 +58,20 @@ sdm_channel_handle_t audioSDMChannel[2] = {0};
 
 bool nextSampleCb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
-	int s = nextSample();
-	static int ls = 0;
-	int ns = (ls * 15 + s) >> 4;
-	ls = ns;
-	sdm_channel_set_duty(audioSDMChannel[0], ns);
-	sdm_channel_set_duty(audioSDMChannel[1], ns);
-	sampleIndex++;
-	cellSampleIndex++;
-	patternSampleIndex++;
-	if(cellSampleIndex == samplesPerCell)
-	{
-		patternIndex = patternIndex + 1;
-		if(patternIndex == 16)
-		{
-			patternIndex = 0;
-			patternSampleIndex = 0;
-		}
-		cellSampleIndex = 0;
-	}
+	//int s = nextSample();
+	int right = 0, left = 0;
+	static int prevLeft = 0, prevRight = 0;
+	panelTrackerNextSample(&left, &right);
+	int newLeft = (prevLeft * 15 + left) >> 4;
+	int newRight = (prevRight * 15 + right) >> 4;
+	if(newLeft < -128) newLeft = -128;
+	if(newRight < -128) newRight = -128;
+	if(newLeft > 127) newLeft = 127;
+	if(newRight > 127) newRight = 127;
+	sdm_channel_set_duty(audioSDMChannel[0], newLeft);
+	sdm_channel_set_duty(audioSDMChannel[1], newRight);
+	prevLeft = newLeft;
+	prevRight = newRight;
 	return true;
 }
 
@@ -143,54 +107,11 @@ void initSound()
 	gptimer_register_event_callbacks(sampleTimer, &cbs, 0);
 	gptimer_enable(sampleTimer);
 	gptimer_start(sampleTimer);
-
-	for(int i = 0; i < 1024; i++)
-	{
-		sinTab[i] = (int)(sin(M_PI * 2 / 1024. * i) * 32767);
-	}
-	for(int i = 0; i < 128; i++)
-	{
-		float f = 440. * pow(2, (i - 69.) / 12.);
-		if(i >= 12)
-		{
-			noteFrequencies[i] = (int)(f * 1024);
-			sprintf(noteName[i], "%s%i", noteNameBase[i%12], i/12 - 1);
-			if(f < 10)
-				sprintf(noteFreqStr[i], "%.2f", f);
-			else if(f < 100)
-				sprintf(noteFreqStr[i], "%.1f", f);
-			else if(f < 1000)
-				sprintf(noteFreqStr[i], "%.0f", f);
-			else
-				sprintf(noteFreqStr[i], "%.1fk", f / 1000);
-		}
-	}
-}
-
-void setRowBtn(int btn, int val)
-{
-	audbrd_btn_led_set(((btn >> 2) << 4) + (btn & 3), val);
-}
-
-void trackerTask(void *param)
-{
-	static int oldPatternIndex = 0;
-	while(1)
-	{
-		if(patternIndex != oldPatternIndex)
-		{
-			setRowBtn(oldPatternIndex, 0);
-			setRowBtn(patternIndex, 1);
-			oldPatternIndex = patternIndex;
-		}
-		
-		vTaskDelay(pdMS_TO_TICKS(10));
-	}
 }
 
 void app_main(void) 
 {
+	initMassstorage();
+	panelTrackerInit(samplingRate);
 	initSound();
-	audbrd_init(ev_cb);
-	xTaskCreate(trackerTask, "tracker", 20000, 0, 5, NULL);
 }

@@ -8,9 +8,11 @@ typedef void (*audbrd_evt_cb_t)(int type, int which, int val);
 #define AUDBRD_BRIGHT_ROTLEDS 0
 #define AUDBRD_BRIGHT_BTNLEDS_RED 1
 #define AUDBRD_BRIGHT_BTNLEDS_GREEN 2
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 //Set one character display (4 characters) to the zero-terminated string in c.
-void audbrd_chardisp_set(int pos, char *c);
+void audbrd_chardisp_set(int pos, const char *c);
 
 //brightness 0-255, with 255 being the brightest. `which` is one of AUDBRD_BRIGHT_X
 void audbrd_brightness_set(int which, int brightness);
@@ -21,3 +23,6 @@ void audbrd_btn_led_set(int index, int rg);
 
 //Initialize board hardware and specify event callback
 void audbrd_init(audbrd_evt_cb_t cb);
+#ifdef __cplusplus
+}
+#endif
