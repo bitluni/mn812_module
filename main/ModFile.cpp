@@ -5,6 +5,7 @@
 Track *ModFile::load(const void *data, int length)
 {
 	Track *track = new Track();
+	if(!track) return 0;
 	//parse
 	const char *d = (const char*)data;
 	int p = 0;
@@ -49,6 +50,7 @@ Track *ModFile::load(const void *data, int length)
 	}
 	track->patternCount = patternCount;
 	track->patterns = new Pattern[patternCount];
+	//if(!track->patterns) return 0;	//TODO
 	//tag
 	unsigned long tag = *(unsigned long*)&d[p];
 	p += 4;
@@ -70,9 +72,13 @@ Track *ModFile::load(const void *data, int length)
 			for(int c = 0; c < channelCount; c++)
 			{
 				//4 bytes per cell
+				//if(p >= length) return 0; //TODO
 				int b1 = (unsigned char)d[p++];
+				//if(p >= length) return 0; //TODO
 				int b2 = (unsigned char)d[p++];
+				//if(p >= length) return 0; //TODO
 				int b3 = (unsigned char)d[p++];
+				//if(p >= length) return 0; //TODO
 				int b4 = (unsigned char)d[p++];
 				int sampleNumber =  (b1 & 0xf0) | (b3 >> 4);
 				int period = ((b1 & 0xf) << 8) | b2;
@@ -101,9 +107,11 @@ Track *ModFile::load(const void *data, int length)
 		if(track->instruments[i].sampleCount)
 		{
 			track->instruments[i].samples = new signed char[track->instruments[i].sampleCount];
+			if(!track->instruments[i].samples) return 0; //TODO
 			for(int j = 0; j < track->instruments[i].sampleCount; j++)
 			{
 				//j < 2 might need to be ignored because of AMIGA
+				//if(p >= length) return 0; //TODO
 				int s = d[p++];
 				track->instruments[i].samples[j] = s;
 			}

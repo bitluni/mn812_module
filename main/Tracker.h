@@ -15,6 +15,7 @@ class Instrument
 {
 	public:
 	Instrument();
+	~Instrument();
 	signed char *samples;
 	int sampleCount;
 	int loopStart;
@@ -39,6 +40,7 @@ class Track
 {
 	public:
 	Track();
+	~Track();
 	int arrangementLength;
 	int arrangementLoopStart;
 	int arrangement[127];
@@ -51,6 +53,7 @@ class Tracker
 {
 	public:
 	Tracker();
+	~Tracker();
 	void init(int samplingRate);
 	void nextSample(int &left, int &right);
 	int samplingRate;

@@ -5,12 +5,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
-#include "zoids.mod.h"
-#include "haste.mod.h"
-#include "the_main_event.mod.h"
-#include "submariners.mod.h"
-#include "drama_mix_spirit.mod.h"
-#include "aspartam.mod.h"
 #include "ModFile.h"
 
 const char *noteNameBase[] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
@@ -67,36 +61,109 @@ void setRowBtn(int btn, int val)
 const int NOTE_MODE = 4;
 const int CELL_UP = 5;
 const int CELL_DOWN = 6;
+const int LIST_FILES = 8;
+bool fileMode = false;
+
+extern "C" int listFiles(char *filenames, const char *suffix);
+extern "C" void* loadFile(int index, const char *suffix, int *psize);
+void showFiles()
+{
+	char fileNames[13 * 16];
+	int count = listFiles(fileNames, "MOD");
+	for(int i = 0; i < 16; i++)
+	{
+		int col = i >> 2;
+		int cel = i & 3;
+		if(i < count)
+		{
+			audbrd_chardisp_set(col * 4 + cel, &fileNames[i * 13]);
+		}
+		else
+		{
+			audbrd_chardisp_set(col * 4 + cel, "    ");
+		}
+	}
+}
 
 void ev_cb(int type, int which, int val) {
 	//printf("Ev %d which %d val %d\n", type, which, val);
 	if (type==AUDBRD_EVT_BTN && val) 
 	{
-		//button[which] = (button[which] + 1) & 3;
-		if(which == NOTE_MODE)
+		if(fileMode)
 		{
-			if(panelTracker.playing)
+			if(which == LIST_FILES)
+			{
+				fileMode = false;
+				panelTracker.updateDisplay();
+				audbrd_btn_led_set(LIST_FILES, 0);
+			}
+			if(which < 4)
+			{
+				if(panelTracker.track) delete(panelTracker.track);
+				panelTracker.track = 0;
+				panelTracker.currentPattern = 0;
+				panelTracker.currentCell = 0;
+				int size = -1;
+				void* file = loadFile(which, "MOD", &size);
+				if(file)
+				{
+					Track *track = ModFile::load(file, sizeof(size));
+					free(file);
+					panelTracker.track = track;
+					fileMode = false;
+					panelTracker.updateDisplay();
+					//char s[12];
+					//sprintf(s, "%i", size);
+					//audbrd_chardisp_set(0, s);					
+				}
+				else
+				{
+					if(size == -1)
+						audbrd_chardisp_set(0, "fil?");
+					else
+					{
+						char s[12];
+						sprintf(s, "%i", size);
+						audbrd_chardisp_set(0, s);
+					}
+				}
+			}
+		}
+		else
+		{
+			//button[which] = (button[which] + 1) & 3;
+			if(which == NOTE_MODE)
+			{
+				if(panelTracker.playing)
+				{
+					panelTracker.stop();
+					audbrd_btn_led_set(NOTE_MODE, 0);
+				}
+				else
+				{
+					panelTracker.play();
+					audbrd_btn_led_set(NOTE_MODE, 1);
+				}
+			}
+			if(which == CELL_DOWN && !panelTracker.playing)
+			{
+				panelTracker.currentCell++;
+				if(panelTracker.currentCell == 64)
+					panelTracker.currentCell = 0;
+			}
+			if(which == CELL_UP && !panelTracker.playing)
+			{
+				panelTracker.currentCell--;
+				if(panelTracker.currentCell == -1)
+					panelTracker.currentCell = 63;
+			}
+			if(which == LIST_FILES)
 			{
 				panelTracker.stop();
-				audbrd_btn_led_set(NOTE_MODE, 0);
+				showFiles();
+				fileMode = true;
+				audbrd_btn_led_set(LIST_FILES, 1);
 			}
-			else
-			{
-				panelTracker.play();
-				audbrd_btn_led_set(NOTE_MODE, 1);
-			}
-		}
-		if(which == CELL_DOWN && !panelTracker.playing)
-		{
-			panelTracker.currentCell++;
-			if(panelTracker.currentCell == 64)
-				panelTracker.currentCell = 0;
-		}
-		if(which == CELL_UP && !panelTracker.playing)
-		{
-			panelTracker.currentCell--;
-			if(panelTracker.currentCell == -1)
-				panelTracker.currentCell = 63;
 		}
 	}
 	if (type==AUDBRD_EVT_ROTARY) 
@@ -168,12 +235,7 @@ extern "C" void panelTrackerInit(int samplingRate)
 {
 	audbrd_init(ev_cb);
 	noteNameInit();
-//	Track *track = ModFile::load(zoids, sizeof(zoids));
-//	Track *track = ModFile::load(haste, sizeof(haste));
-//	Track *track = ModFile::load(the_main_event, sizeof(haste));
-	Track *track = ModFile::load(submariners, sizeof(haste));
 	panelTracker.init(samplingRate);
-	panelTracker.track = track;
 	panelTracker.updateDisplay();
 	xTaskCreate(trackerTask, "tracker", 20000, 0, 5, NULL);
 }

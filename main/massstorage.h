@@ -13,6 +13,8 @@
 
 #include <errno.h>
 #include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 //#include "esp_console.h"
 #include "esp_check.h"
 #include "driver/gpio.h"
@@ -23,6 +25,7 @@
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
 #endif
+#include <string.h>
 
 static const char *TAG = "example_main";
 
@@ -209,33 +212,98 @@ static int console_write(int argc, char **argv)
     return 0;
 }
 
-// Show storage size and sector size
-static int console_size(int argc, char **argv)
+int listFiles(char *filenames, const char *suffix)
 {
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "storage exposed over USB. Application can't access storage");
-        return -1;
+    tinyusb_msc_storage_mount(BASE_PATH);
+    struct dirent *d;
+	int count = 0;
+    DIR *dh = opendir(BASE_PATH);
+    if (!dh) {
+        if (errno == ENOENT) 
+		{
+			strcpy(filenames, "DIR?");
+        } else {
+			strcpy(filenames, "DIR!");
+        }
+        return 1;
     }
-    uint32_t sec_count = tinyusb_msc_storage_get_sector_count();
-    uint32_t sec_size = tinyusb_msc_storage_get_sector_size();
-    printf("Storage Capacity %lluMB\n", ((uint64_t) sec_count) * sec_size / (1024 * 1024));
-    return 0;
+    while ((d = readdir(dh)) != NULL) 
+	{
+		int len = strlen(d->d_name);
+		if(len < 3) continue;
+		char s[4];
+		strcpy(s, &d->d_name[len - 3]);
+		for(int i = 0; i < 3; i++)
+			s[i] &= 0xdf;
+		if(!strcmp(s, suffix))
+		{
+			sprintf(&filenames[13 * count], "%.4s", d->d_name);
+			count++;
+		}
+    }
+
+    tinyusb_msc_storage_unmount();
+	return count;
 }
 
-// exit from application
-static int console_status(int argc, char **argv)
+void* loadFile(int index, const char *suffix, int *psize)
 {
-    printf("storage exposed over USB: %s\n", tinyusb_msc_storage_in_use_by_usb_host() ? "Yes" : "No");
-    return 0;
-}
-
-// exit from application
-static int console_exit(int argc, char **argv)
-{
-    tinyusb_msc_storage_deinit();
-    printf("Application Exiting\n");
-    exit(0);
-    return 0;
+    tinyusb_msc_storage_mount(BASE_PATH);
+    struct dirent *d;
+	int count = 0;
+    DIR *dh = opendir(BASE_PATH);
+    if (!dh) return 0;
+    while ((d = readdir(dh)) != NULL) 
+	{
+		int len = strlen(d->d_name);
+		if(len < 3) continue;
+		char s[4];
+		strcpy(s, &d->d_name[len - 3]);
+		for(int i = 0; i < 3; i++)
+			s[i] &= 0xdf;
+		if(!strcmp(s, suffix))
+		{
+			if(count == index)
+			{
+				//found it
+				struct stat st;          
+				char *path = (char*)malloc(strlen(BASE_PATH) + len + 2);
+				sprintf(path, "%s/%s", BASE_PATH, d->d_name);
+				if(stat(path, &st))
+				{
+					free(path);
+					tinyusb_msc_storage_unmount();
+					closedir(dh);
+					return 0;
+				}
+				int size = st.st_size;
+				*psize = size;
+				void *buf = malloc(size);
+				FILE *ptr = fopen(path, "r");
+				if (ptr == 0)			
+				{
+					free(path);
+					tinyusb_msc_storage_unmount();
+					closedir(dh);
+					return 0;
+				}
+				*psize = fread(buf, 1, size, ptr); 
+				fclose(ptr);
+				//path[strlen(path) - 1] = '_';
+				//ptr = fopen(path, "w");
+				//fwrite(buf, 1, size, ptr);
+				//fclose(ptr); 
+				free(path);
+				closedir(dh);
+				tinyusb_msc_storage_unmount();
+				return buf;
+			}
+			count++;
+		}
+    }
+	closedir(dh);
+    tinyusb_msc_storage_unmount();
+	return 0;
 }
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH

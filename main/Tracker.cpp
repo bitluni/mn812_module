@@ -24,6 +24,11 @@ Instrument::Instrument()
 	}*/
 }
 
+Instrument::~Instrument()
+{
+	delete(samples);
+}
+
 Pattern::Pattern()
 {
 }
@@ -42,6 +47,11 @@ Tracker::Tracker()
 		currentNote[i] = 0;
 		currentInstrument[i] = 0;
 	}
+}
+
+Tracker::~Tracker()
+{
+	delete(track);
 }
 
 void Tracker::init(int samplingRate)
@@ -156,4 +166,9 @@ Track::Track()
 {
 	patterns = 0;
 	patternCount = 0;
+}
+
+Track::~Track()
+{
+	delete(patterns);
 }
