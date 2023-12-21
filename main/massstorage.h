@@ -21,11 +21,8 @@
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
 #define CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMCCARD
-#include "diskio_impl.h"
-#include "diskio_sdmmc.h"
-#endif
 #include <string.h>
+#include "tusb_cdc_acm.h"
 
 static const char *TAG = "example_main";
 
@@ -307,7 +304,6 @@ void* loadFile(int index, const char *suffix, int *psize)
 	return 0;
 }
 
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
 static esp_err_t storage_init_spiflash(wl_handle_t *wl_handle)
 {
     ESP_LOGI(TAG, "Initializing wear levelling");
@@ -320,91 +316,32 @@ static esp_err_t storage_init_spiflash(wl_handle_t *wl_handle)
 
     return wl_mount(data_partition, wl_handle);
 }
-#else  // CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-static esp_err_t storage_init_sdmmc(sdmmc_card_t **card)
+
+static uint8_t buf[CONFIG_TINYUSB_CDC_RX_BUFSIZE + 1];
+
+void tinyusb_cdc_rx_callback(int itf, cdcacm_event_t *event)
 {
-    esp_err_t ret = ESP_OK;
-    bool host_init = false;
-    sdmmc_card_t *sd_card;
+    /* initialization */
+    size_t rx_size = 0;
 
-    ESP_LOGI(TAG, "Initializing SDCard");
-
-    // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
-    // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 40MHz for SDMMC)
-    // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-
-    // For SD Card, set bus width to use
-#ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-    slot_config.width = 4;
-#else
-    slot_config.width = 1;
-#endif  // CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-
-    // On chips where the GPIOs used for SD card can be configured, set the user defined values
-#ifdef CONFIG_SOC_SDMMC_USE_GPIO_MATRIX
-    slot_config.clk = CONFIG_EXAMPLE_PIN_CLK;
-    slot_config.cmd = CONFIG_EXAMPLE_PIN_CMD;
-    slot_config.d0 = CONFIG_EXAMPLE_PIN_D0;
-#ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-    slot_config.d1 = CONFIG_EXAMPLE_PIN_D1;
-    slot_config.d2 = CONFIG_EXAMPLE_PIN_D2;
-    slot_config.d3 = CONFIG_EXAMPLE_PIN_D3;
-#endif  // CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-
-#endif  // CONFIG_SOC_SDMMC_USE_GPIO_MATRIX
-
-    // Enable internal pullups on enabled pins. The internal pullups
-    // are insufficient however, please make sure 10k external pullups are
-    // connected on the bus. This is for debug / example purpose only.
-    slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
-
-    // not using ff_memalloc here, as allocation in internal RAM is preferred
-    sd_card = (sdmmc_card_t *)malloc(sizeof(sdmmc_card_t));
-    ESP_GOTO_ON_FALSE(sd_card, ESP_ERR_NO_MEM, clean, TAG, "could not allocate new sdmmc_card_t");
-
-    ESP_GOTO_ON_ERROR((*host.init)(), clean, TAG, "Host Config Init fail");
-    host_init = true;
-
-    ESP_GOTO_ON_ERROR(sdmmc_host_init_slot(host.slot, (const sdmmc_slot_config_t *) &slot_config),
-                      clean, TAG, "Host init slot fail");
-
-    while (sdmmc_card_init(&host, sd_card)) {
-        ESP_LOGE(TAG, "The detection pin of the slot is disconnected(Insert uSD card). Retrying...");
-        vTaskDelay(pdMS_TO_TICKS(3000));
+    /* read */
+    esp_err_t ret = tinyusb_cdcacm_read(itf, buf, CONFIG_TINYUSB_CDC_RX_BUFSIZE, &rx_size);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Data from channel %d:", itf);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, buf, rx_size, ESP_LOG_INFO);
+    } else {
+        ESP_LOGE(TAG, "Read error");
     }
 
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, sd_card);
-    *card = sd_card;
-
-    return ESP_OK;
-
-clean:
-    if (host_init) {
-        if (host.flags & SDMMC_HOST_FLAG_DEINIT_ARG) {
-            host.deinit_p(host.slot);
-        } else {
-            (*host.deinit)();
-        }
-    }
-    if (sd_card) {
-        free(sd_card);
-        sd_card = NULL;
-    }
-    return ret;
+    /* write back */
+    tinyusb_cdcacm_write_queue(itf, buf, rx_size);
+    tinyusb_cdcacm_write_flush(itf, 0);
 }
-#endif  // CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
 
 void initMassstorage(void)
 {
     ESP_LOGI(TAG, "Initializing storage...");
 
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
     static wl_handle_t wl_handle = WL_INVALID_HANDLE;
     ESP_ERROR_CHECK(storage_init_spiflash(&wl_handle));
 
@@ -412,19 +349,10 @@ void initMassstorage(void)
         .wl_handle = wl_handle
     };
     ESP_ERROR_CHECK(tinyusb_msc_storage_init_spiflash(&config_spi));
-#else // CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-    static sdmmc_card_t *card = NULL;
-    ESP_ERROR_CHECK(storage_init_sdmmc(&card));
-
-    const tinyusb_msc_sdmmc_config_t config_sdmmc = {
-        .card = card
-    };
-    ESP_ERROR_CHECK(tinyusb_msc_storage_init_sdmmc(&config_sdmmc));
-#endif  // CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
 
     //mounted in the app by default
     _mount();
-
+/*
     ESP_LOGI(TAG, "USB MSC initialization");
     const tinyusb_config_t tusb_cfg = {
         .device_descriptor = &descriptor_config,
@@ -434,7 +362,31 @@ void initMassstorage(void)
         .configuration_descriptor = desc_configuration,
     };
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
-    ESP_LOGI(TAG, "USB MSC initialization DONE");
+    ESP_LOGI(TAG, "USB MSC initialization DONE");*/
+	//tinyusb_config_cdcacm_t acm_cfg = { 0 }; // the configuration uses default values
+    //ESP_ERROR_CHECK(tusb_cdc_acm_init(&acm_cfg));
+
+    ESP_LOGI(TAG, "USB Composite initialization");
+    const tinyusb_config_t tusb_cfg = {
+        .device_descriptor = NULL,
+        .string_descriptor = NULL,
+        .string_descriptor_count = 0,
+        .external_phy = false,
+        .configuration_descriptor = NULL,
+    };
+    ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
+
+    tinyusb_config_cdcacm_t acm_cfg = {
+        .usb_dev = TINYUSB_USBDEV_0,
+        .cdc_port = TINYUSB_CDC_ACM_0,
+        .rx_unread_buf_sz = 64,
+        .callback_rx = &tinyusb_cdc_rx_callback, // the first way to register a callback
+        .callback_rx_wanted_char = NULL,
+        .callback_line_state_changed = NULL,
+        .callback_line_coding_changed = NULL
+    };
+
+    ESP_ERROR_CHECK(tusb_cdc_acm_init(&acm_cfg));
 
     /*esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();*/

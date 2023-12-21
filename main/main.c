@@ -91,7 +91,7 @@ void initSound()
 	gptimer_config_t timer_config = {
 		.clk_src = GPTIMER_CLK_SRC_DEFAULT,
 		.direction = GPTIMER_COUNT_UP,
-		.resolution_hz = samplingRate*16,
+		.resolution_hz = samplingRate /** 16*/ * 24,
 	};
 	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &sampleTimer));
 
