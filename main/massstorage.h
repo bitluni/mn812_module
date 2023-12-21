@@ -278,7 +278,8 @@ void* loadFile(int index, const char *suffix, int *psize)
 				}
 				int size = st.st_size;
 				*psize = size;
-				void *buf = malloc(size);
+				void *buf = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+				//void *buf = malloc(size);
 				FILE *ptr = fopen(path, "r");
 				if (ptr == 0)			
 				{

@@ -97,17 +97,17 @@ void ev_cb(int type, int which, int val) {
 				panelTracker.updateDisplay();
 				audbrd_btn_led_set(LIST_FILES, 0);
 			}
-			if(which < 4)
+			if((which & 15) < 4)
 			{
 				if(panelTracker.track) delete(panelTracker.track);
 				panelTracker.track = 0;
 				panelTracker.currentPattern = 0;
 				panelTracker.currentCell = 0;
 				int size = -1;
-				void* file = loadFile(which, "MOD", &size);
+				void* file = loadFile((which & 3) + (which >> 4) * 4, "MOD", &size);
 				if(file)
 				{
-					Track *track = ModFile::load(file, sizeof(size));
+					Track *track = ModFile::load(file, size);
 					free(file);
 					panelTracker.track = track;
 					fileMode = false;
