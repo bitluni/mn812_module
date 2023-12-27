@@ -49,6 +49,10 @@ class Track
 	Instrument instruments[31];
 };
 
+const int STATE_OFF = 0;
+const int STATE_ON = 1;
+const int STATE_RELEASE = 2;
+
 class Tracker
 {
 	public:
@@ -72,6 +76,10 @@ class Tracker
 	int currentSampleNote[4];
 	int currentInstrument[4];
 	int currentSampleTrack;
+
+	int touchSampleIndex[16];
+	int touch[16];
+
 	void play();
 	void stop();
 	bool playing;

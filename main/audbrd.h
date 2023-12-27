@@ -3,6 +3,7 @@
 //Callback function for rotary and button events.
 #define AUDBRD_EVT_BTN 1
 #define AUDBRD_EVT_ROTARY 2
+#define AUDBRD_EVT_TOUCH 3
 typedef void (*audbrd_evt_cb_t)(int type, int which, int val);
 
 #define AUDBRD_BRIGHT_ROTLEDS 0

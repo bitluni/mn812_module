@@ -65,6 +65,12 @@ void Tracker::init(int samplingRate)
 		if(i >= 12)
 			noteFrequencies[i] = (int)(f * 1024);
 	}
+
+	for(int i = 0; i < 16; i++)
+	{
+		touch[i] = 0;
+		touchSampleIndex[i] = 0;
+	}
 }
 
 void Tracker::nextSample(int &left, int &right)
@@ -72,8 +78,25 @@ void Tracker::nextSample(int &left, int &right)
 	left = 0;
 	right = 0;
 	//tick();?
-	if(!playing) return;
 	if(!track) return;
+	for(int i = 0; i < 16; i++)
+	if(touch[i] != STATE_OFF && track->instruments[i].sampleCount)
+	{
+		//int pitchPos = (currentSampleNote[i] * noteFrequencies[currentNote[i]]) / ((samplingRate * samplingRate) / 16500);
+		int pos = touchSampleIndex[i]++;
+		if(touch[i] == STATE_ON && track->instruments[i].loopLength > 2 &&
+			touchSampleIndex[i] >= 
+				track->instruments[i].loopStart 
+				+ track->instruments[i].loopLength)
+			touchSampleIndex[i] = track->instruments[i].loopStart;
+
+		if(touchSampleIndex[i] >= track->instruments[i].sampleCount)
+			touch[i] = STATE_OFF;
+
+		left += track->instruments[i].samples[pos];
+		right += track->instruments[i].samples[pos];
+	}
+	if(!playing) return;
 	for(int i = 0; i < 4; i++)
 	{
 		int note = track->patterns[track->arrangement[currentPattern]]

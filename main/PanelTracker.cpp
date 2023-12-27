@@ -87,6 +87,33 @@ void showFiles()
 
 void ev_cb(int type, int which, int val) {
 	//printf("Ev %d which %d val %d\n", type, which, val);
+	/*if (type==AUDBRD_EVT_BTN)
+	{
+		char s[12];
+		sprintf(s, "%i", which);
+		audbrd_chardisp_set(0, s);
+	}*/
+	if(type==AUDBRD_EVT_BTN && which >= 80)
+	{
+		/*char s[12];
+		sprintf(s, "%i", val);
+		audbrd_chardisp_set(0, s);*/
+		int i = which - 80;
+		if(val == 0)
+		{
+			if(panelTracker.touch[i] != STATE_ON)
+			{		
+				panelTracker.touchSampleIndex[i] = 0;
+				panelTracker.touch[i] = STATE_ON;
+			}
+		}
+		else
+		{
+			if(panelTracker.touch[i] != STATE_OFF)
+				panelTracker.touch[i] = STATE_RELEASE;
+		}
+	}
+
 	if (type==AUDBRD_EVT_BTN && val) 
 	{
 		if(fileMode)
